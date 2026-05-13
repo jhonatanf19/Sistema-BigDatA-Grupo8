@@ -1,15 +1,4 @@
-# Rapídex: Plataforma Big Data Para Monitoreo De Pedidos Delivery En Tiempo Real
-
-## 1. Descripción del caso
-
-Rapídex es una empresa ficticia de delivery que opera en varios distritos de Lima.
-La empresa necesita analizar pedidos históricos y eventos en tiempo real para detectar demanda, retrasos, cancelaciones y pedidos en riesgo.
-
-## 2. Objetivo general
-
-Construir una solución Big Data usando Apache Spark, Python y Kafka para procesar datos batch y streaming, generar indicadores operativos y preparar una estructura adaptable a MongoDB.
-
-## 3. Tecnologías usadas
+## 1. Tecnologías usadas
 
 - Docker
 - Python
@@ -24,7 +13,7 @@ Construir una solución Big Data usando Apache Spark, Python y Kafka para proces
 - Matplotlib
 - MongoDB como extensión opcional
 
-## 4. Resultados esperados
+## 2. Resultados esperados
 
 - Pedidos por distrito
 - Tiempo promedio de entrega
@@ -36,7 +25,7 @@ Construir una solución Big Data usando Apache Spark, Python y Kafka para proces
 - Archivos Parquet
 - Gráficos PNG
 
-## 5. Estructura del proyecto
+## 3. Estructura del proyecto
 
 ```text
 rapidex-bigdata-streaming/

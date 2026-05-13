@@ -1,4 +1,4 @@
-product_id,product_name,category,base_price,stock
+product_id,product_name,category,base_price,stock,
 PROD-0001,Electrohogar Item 1,Electrohogar,1777.94,487
 PROD-0002,Hogar Item 2,Hogar,781.93,487
 PROD-0003,Electrohogar Item 3,Electrohogar,4036.48,458

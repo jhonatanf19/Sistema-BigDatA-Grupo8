@@ -3,78 +3,160 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
-plt.style.use('ggplot')
+# =========================
+# ESTILO
+# =========================
+plt.style.use("ggplot")
 sns.set_palette("husl")
 
+# =========================
+# RUTAS
+# =========================
 BASE_DIR = Path(__file__).resolve().parents[1]
-KPI_DIR = BASE_DIR / "output" / "kpis"
-CHARTS_DIR = BASE_DIR / "output" / "charts"
-CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 
-def load_kpi(filename):
-    path = KPI_DIR / f"{filename}_temp"
-    csv_file = list(path.glob("part-*.csv"))[0]
-    return pd.read_csv(csv_file)
+OUTPUT_DIR = BASE_DIR / "output"
+VIS_DIR = OUTPUT_DIR / "visualizations"
 
+VIS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# =========================
+# CARGA CSV
+# =========================
+def load_csv(filename):
+    file_path = OUTPUT_DIR / filename
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"No existe: {file_path}")
+
+    return pd.read_csv(file_path)
+
+
+# =========================
+# GUARDAR
+# =========================
 def save_plot(name):
     plt.tight_layout()
-    plt.savefig(CHARTS_DIR / f"{name}.png", dpi=150)
+    plt.savefig(VIS_DIR / f"{name}.png", dpi=150)
     plt.close()
-    print(f"Grafico exportado: {name}.png")
+    print(f"✔ Gráfico generado: {name}.png")
 
-# 
-def plot_market_share():
-    df = load_kpi("kpi_categorias")
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(data=df, x='category', y='ingresos_totales', ax=ax)
-    
-    plt.title("Ingresos Totales por Categoría (Market Share)", fontsize=14, fontweight='bold')
-    plt.xlabel("Categoría de Producto")
-    plt.ylabel("Ventas Totales (S/.)")
-    
-    for p in ax.patches:
-        ax.annotate(f'S/.{p.get_height():,.0f}', 
-                    (p.get_x() + p.get_width() / 2., p.get_height()), 
-                    ha='center', va='center', xytext=(0, 9), 
-                    textcoords='offset points', fontsize=9)
-    
-    save_plot("market_share_categorias")
 
-def plot_ticket_vs_discounts():
-    df = load_kpi("kpi_categorias")
-    
+# =========================
+# KPI CIUDADES
+# =========================
+def plot_sales_by_city():
+    df = load_csv("kpis_batch.csv")
+
     plt.figure(figsize=(10, 6))
-    plt.scatter(df['ticket_promedio'], df['total_descuentos_otorgados'], s=df['num_ventas']*2, alpha=0.6)
-    
-    # Anotar puntos
-    for i, txt in enumerate(df['category']):
-        plt.annotate(txt, (df['ticket_promedio'][i], df['total_descuentos_otorgados'][i]))
 
-    plt.title("Relación Ticket Promedio vs Inversión en Descuentos", fontsize=12)
-    plt.xlabel("Ticket Promedio (S/.)")
-    plt.ylabel("Inversión en Descuentos (S/.)")
-    
-    save_plot("eficiencia_descuentos")
+    sns.barplot(
+        data=df,
+        x="city",
+        y="ingresos_ciudad"
+    )
 
-# 
-def plot_channel_performance():
-    df = load_kpi("kpi_canales")
-    
-    plt.figure(figsize=(8, 8))
-    plt.pie(df['venta_neta'], labels=df['channel'], autopct='%1.1f%%', 
-            startangle=140, colors=['#ff9999','#66b3ff','#99ff99'])
-    
-    plt.title("Distribución de Ventas por Canal de Venta", fontsize=14, fontweight='bold')
-    save_plot("distribucion_canales")
+    plt.title(
+        "Ventas Totales por Ciudad",
+        fontsize=14,
+        fontweight="bold"
+    )
+
+    plt.xlabel("Ciudad")
+    plt.ylabel("Ingresos")
+
+    plt.xticks(rotation=45)
+
+    save_plot("ventas_por_ciudad")
 
 
+# =========================
+# KPI CATEGORÍAS
+# =========================
+def plot_top_categories():
+    df = load_csv("kpi_categorias.csv")
+
+    plt.figure(figsize=(10, 6))
+
+    sns.barplot(
+        data=df,
+        x="category",
+        y="ingresos_totales"
+    )
+
+    plt.title(
+        "Top Categorías por Ingresos",
+        fontsize=14,
+        fontweight="bold"
+    )
+
+    plt.xlabel("Categoría")
+    plt.ylabel("Ingresos Totales")
+
+    plt.xticks(rotation=45)
+
+    save_plot("top_categorias")
+
+
+# =========================
+# STREAMING EVENTOS
+# =========================
+def plot_streaming_events():
+    file_path = BASE_DIR / "data" / "streaming_eventos.jsonl"
+
+    df = pd.read_json(
+        file_path,
+        lines=True
+    )
+
+    event_counts = (
+        df["event_type"]
+        .value_counts()
+        .reset_index()
+    )
+
+    event_counts.columns = [
+        "event_type",
+        "count"
+    ]
+
+    plt.figure(figsize=(10, 6))
+
+    sns.barplot(
+        data=event_counts,
+        x="event_type",
+        y="count"
+    )
+
+    plt.title(
+        "Distribución de Eventos Streaming",
+        fontsize=14,
+        fontweight="bold"
+    )
+
+    plt.xlabel("Tipo de Evento")
+    plt.ylabel("Cantidad")
+
+    plt.xticks(rotation=45)
+
+    save_plot("eventos_streaming")
+
+
+# =========================
+# MAIN
+# =========================
 if __name__ == "__main__":
-    print(">>> Iniciando Motor de Visualización Big Data...")
+    print(">>> Iniciando visualizaciones Big Data...")
+
     try:
-        plot_market_share()
-        plot_channel_performance()
-        plot_ticket_vs_discounts()
-        print(">>> Proceso finalizado. Los gráficos están listos para el informe.")
+        plot_sales_by_city()
+        plot_top_categories()
+        plot_streaming_events()
+
+        print(">>> VISUALIZACIONES COMPLETADAS")
+        print("✔ ventas_por_ciudad.png")
+        print("✔ top_categorias.png")
+        print("✔ eventos_streaming.png")
+
     except Exception as e:
-        print(f"Error: Asegúrate de que el script 03_batch_etl_retail_spark.py se haya ejecutado. Detalle: {e}")
+        print(f"Error: Verifica outputs del ETL. Detalle: {e}")

@@ -1,101 +1,144 @@
-import argparse
 import logging
 from pathlib import Path
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, BooleanType
 
-# Configuración de Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# =========================
+# LOGGING
+# =========================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 logger = logging.getLogger(__name__)
 
 
+# =========================
+# RUTAS
+# =========================
 BASE_DIR = Path(__file__).resolve().parents[1]
-CHECKPOINT_DIR = BASE_DIR / "data" / "checkpoints" / "retail_streaming"
-OUTPUT_STREAM_DIR = BASE_DIR / "output" / "streaming_alerts"
 
-for d in [CHECKPOINT_DIR, OUTPUT_STREAM_DIR]: d.mkdir(parents=True, exist_ok=True)
+STREAM_FILE = BASE_DIR / "data" / "streaming_eventos.jsonl"
 
-retail_event_schema = StructType([
-    StructField("event_id", StringType(), True),
-    StructField("timestamp", StringType(), True),
-    StructField("event_type", StringType(), True),
-    StructField("customer_id", StringType(), True),
-    StructField("customer_segment", StringType(), True),
-    StructField("sku", StringType(), True),
-    StructField("category", StringType(), True),
-    StructField("amount", DoubleType(), True),
-    StructField("channel", StringType(), True),
-    StructField("is_high_value_alert", BooleanType(), True)
-])
+OUTPUT_DIR = BASE_DIR / "output"
+
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def process_retail_batch(batch_df, batch_id):
-    """Analiza cada ráfaga de datos de Kafka."""
-    if batch_df.isEmpty():
-        return
-
-    print(f"\n--- [MICRO-BATCH {batch_id}] ---")
-    batch_df.cache()
-
-    alerts_df = batch_df.filter(
-        (F.col("is_high_value_alert") == True) | 
-        (F.col("event_type") == "devolucion_solicitada")
+# =========================
+# CREAR SPARK
+# =========================
+def create_spark():
+    return (
+        SparkSession.builder
+        .appName("RetailStreamingLocal")
+        .master("local[*]")
+        .getOrCreate()
     )
 
-    stats_df = batch_df.groupBy("category").agg(
-        F.count("*").alias("transacciones"),
-        F.round(F.sum("amount"), 2).alias("volumen_venta_pen")
-    )
 
-    # 3. Visualización en Consola
-    print("Métricas de Ventas Actuales:")
-    stats_df.show()
-
-    if alerts_df.count() > 0:
-        print("⚠️ ALERTAS DETECTADAS (Alta Prioridad):")
-        alerts_df.select("event_id", "customer_segment", "amount", "event_type").show()
-
-    alerts_df.toPandas().to_csv(
-        OUTPUT_STREAM_DIR / f"alerts_batch_{batch_id}.csv", 
-        index=False
-    )
-    
-    batch_df.unpersist()
-
-
+# =========================
+# MAIN
+# =========================
 def main():
-    spark = (SparkSession.builder
-            .appName("FalabellaStreamingAnalytics")
-            .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0")
-            .getOrCreate())
-    
+    spark = create_spark()
     spark.sparkContext.setLogLevel("ERROR")
 
-    # Lectura desde Kafka
-    raw_stream_df = (spark.readStream
-        .format("kafka")
-        .option("kafka.bootstrap.servers", "broker:19092")
-        .option("subscribe", "retail-events")
-        .option("startingOffsets", "latest")
-        .load())
+    print(">>> Iniciando análisis de streaming local...")
 
-    # Deserialización de JSON
-    processed_stream_df = (raw_stream_df
-        .selectExpr("CAST(value AS STRING)")
-        .select(F.from_json("value", retail_event_schema).alias("data"))
-        .select("data.*")
-        .withColumn("event_time", F.to_timestamp("timestamp")))
+    # =========================
+    # LEER JSONL
+    # =========================
+    df = (
+        spark.read
+        .option("multiline", False)
+        .json(str(STREAM_FILE))
+    )
 
-    # Definición del Sink (Salida)
-    query = (processed_stream_df.writeStream
-        .foreachBatch(process_retail_batch)
-        .option("checkpointLocation", str(CHECKPOINT_DIR))
-        .trigger(processingTime="10 seconds") # Procesar cada 10 segs
-        .start())
+    print(">>> Vista previa eventos:")
+    df.show(5, truncate=False)
 
-    logger.info("Pipeline Streaming activo. Esperando eventos...")
-    query.awaitTermination()
+    # =========================
+    # ALERTAS
+    # =========================
+    alerts_df = df.filter(
+        (F.col("is_high_value_alert") == True) |
+        (F.col("is_stock_alert") == True) |
+        (F.col("event_type") == "pago_rechazado") |
+        (F.col("event_type") == "devolucion_producto")
+    )
 
+    # =========================
+    # MÉTRICAS POR CATEGORÍA
+    # =========================
+    categoria_df = (
+        df.groupBy("category")
+        .agg(
+            F.count("*").alias("transacciones"),
+            F.round(
+                F.sum("amount"),
+                2
+            ).alias("volumen_venta")
+        )
+        .orderBy(F.desc("volumen_venta"))
+    )
+
+    # =========================
+    # MÉTRICAS POR EVENTO
+    # =========================
+    eventos_df = (
+        df.groupBy("event_type")
+        .count()
+        .orderBy(F.desc("count"))
+    )
+
+    # =========================
+    # MOSTRAR
+    # =========================
+    print(">>> Métricas por Categoría:")
+    categoria_df.show(truncate=False)
+
+    print(">>> Frecuencia de Eventos:")
+    eventos_df.show(truncate=False)
+
+    print(">>> Alertas Detectadas:")
+    alerts_df.select(
+        "event_id",
+        "customer_id",
+        "product_name",
+        "amount",
+        "stock",
+        "event_type"
+    ).show(truncate=False)
+
+    # =========================
+    # EXPORTAR ALERTAS
+    # =========================
+    alerts_output = OUTPUT_DIR / "alertas_streaming.json"
+
+    alerts_pd = alerts_df.toPandas()
+
+    alerts_pd.to_json(
+        alerts_output,
+        orient="records",
+        force_ascii=False,
+        indent=4
+    )
+
+    print(f"✔ Alertas exportadas: {alerts_output.name}")
+
+    spark.stop()
+
+    print(">>> STREAMING ANALYTICS FINALIZADO")
+    print("✔ Análisis local completado")
+    print("✔ Sin Kafka")
+    print("✔ Alertas generadas")
+
+
+# =========================
+# ENTRYPOINT
+# =========================
 if __name__ == "__main__":
     main()

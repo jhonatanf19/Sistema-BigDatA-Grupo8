@@ -35,7 +35,7 @@ La solución integra procesamiento batch y streaming utilizando Apache Spark, Ap
 
 - Alessandro Garcia Rengifo
 - Jhonatan Frank Portillo Toledo
-- Nicol Sharon Mendoza
+- Nicole Sharon Mendoza
 - Ruth Belén Gutierrez Reyes
 - Franklin Anthony Contreras Chavez
 
